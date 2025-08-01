@@ -22,11 +22,13 @@ def extract_rainfall_indicators(lat, lon):
             print(f"📡 Year {year} → {url}")
             ds = xr.open_dataset(url, engine="netcdf4")
 
-            # Fix 1: Skip bound checking, since sel(..., method='nearest') handles it
-            rain = ds["RAINFALL"].sel(
-                LATITUDE=lat,
-                LONGITUDE=lon,
-                method="nearest"
+            # 💡 Force-load grid points into memory
+            lat_idx = abs(ds.LATITUDE - lat).argmin().item()
+            lon_idx = abs(ds.LONGITUDE - lon).argmin().item()
+
+            rain = ds["RAINFALL"].isel(
+                LATITUDE=lat_idx,
+                LONGITUDE=lon_idx
             ).values
 
             if rain is not None and len(rain) > 0:

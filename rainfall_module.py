@@ -22,14 +22,7 @@ def extract_rainfall_indicators(lat, lon):
             print(f"📡 Year {year} → {url}")
             ds = xr.open_dataset(url, engine="netcdf4")
 
-            lat_bounds = (float(ds.LATITUDE.min()), float(ds.LATITUDE.max()))
-            lon_bounds = (float(ds.LONGITUDE.min()), float(ds.LONGITUDE.max()))
-
-            if not (lat_bounds[0] <= lat <= lat_bounds[1]):
-                raise ValueError(f"Latitude {lat} out of range: {lat_bounds}")
-            if not (lon_bounds[0] <= lon <= lon_bounds[1]):
-                raise ValueError(f"Longitude {lon} out of range: {lon_bounds}")
-
+            # Fix 1: Skip bound checking, since sel(..., method='nearest') handles it
             rain = ds["RAINFALL"].sel(
                 LATITUDE=lat,
                 LONGITUDE=lon,

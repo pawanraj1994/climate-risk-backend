@@ -6,15 +6,14 @@ def extract_rainfall_indicators(lat, lon):
     base_url = "https://storage.googleapis.com/rainfall-risk-data"
     years = list(range(1910, 2024))
     rainfall_values = []
-
     successful_years = 0
     failed_years = []
 
+    # Snap longitude to [0, 360) if negative
     if lon < 0:
         lon += 360
 
     print(f"\n🌍 Processing coordinates: lat={lat}, lon={lon}")
-    print(f"📁 Base URL: {base_url}")
 
     for year in years:
         url = f"{base_url}/RF25_ind{year}_rfp25.nc"
@@ -22,41 +21,47 @@ def extract_rainfall_indicators(lat, lon):
             print(f"📡 Year {year} → {url}")
             ds = xr.open_dataset(url, engine="netcdf4")
 
-            # 💡 Force-load grid points into memory
-            lat_idx = abs(ds.LATITUDE - lat).argmin().item()
-            lon_idx = abs(ds.LONGITUDE - lon).argmin().item()
+            # Confirm variable names
+            if not {'LATITUDE', 'LONGITUDE', 'RAINFALL'}.issubset(ds.variables):
+                raise Exception(f"Variables in file: {list(ds.variables)} — missing one of LATITUDE/LONGITUDE/RAINFALL!")
 
-            rain = ds["RAINFALL"].isel(
-                LATITUDE=lat_idx,
-                LONGITUDE=lon_idx
-            ).values
+            # Find nearest lat/lon index
+            lats = ds['LATITUDE'].values
+            lons = ds['LONGITUDE'].values
+            lat_idx = np.abs(lats - lat).argmin()
+            lon_idx = np.abs(lons - lon).argmin()
+            lat_nearest = lats[lat_idx]
+            lon_nearest = lons[lon_idx]
+            print(f"   → Nearest gridpoint: lat={lat_nearest} (idx={lat_idx}), lon={lon_nearest} (idx={lon_idx})")
+
+            # Extract rainfall series
+            rain = ds['RAINFALL'].isel(LATITUDE=lat_idx, LONGITUDE=lon_idx).values
 
             if rain is not None and len(rain) > 0:
                 rainfall_values.extend(rain.tolist())
                 successful_years += 1
-                print(f"✅ Year {year}: {len(rain)} values")
+                print(f"✅ Year {year}: {len(rain)} daily values")
             else:
-                print(f"⚠️ Year {year}: no data")
+                print(f"⚠️ Year {year}: No rainfall data at this point")
 
             ds.close()
             if year % 10 == 0:
                 gc.collect()
 
         except Exception as e:
-            print(f"❌ Year {year} failed: {e}")
+            print(f"❌ Year {year} failed: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
             failed_years.append(year)
 
     print(f"\n📊 Summary: {successful_years} years successful, {len(failed_years)} failed")
-
     if not rainfall_values:
         raise ValueError(f"No valid rainfall data found. Failed years: {failed_years[:10]}...")
-
     if successful_years < 10:
         raise ValueError(f"Insufficient data: only {successful_years} years loaded")
 
     rainfall = np.array(rainfall_values)
     total_days = len(rainfall)
-
     er100_days = np.sum(rainfall > 100)
     er150_days = np.sum(rainfall > 150)
     p_er100 = round(er100_days / total_days, 3)

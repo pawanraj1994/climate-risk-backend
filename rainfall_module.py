@@ -1,6 +1,29 @@
 import numpy as np
 import xarray as xr
 import gc
+import requests
+import os
+
+def open_remote_netcdf(url):
+    # Download file to /tmp with a unique filename per year to avoid overwrite
+    local_path = "/tmp/temp.nc"
+    try:
+        r = requests.get(url, timeout=60)
+        r.raise_for_status()
+        with open(local_path, "wb") as f:
+            f.write(r.content)
+        ds = xr.open_dataset(local_path, engine="netcdf4")
+        return ds
+    except Exception as e:
+        print(f"❌ Download/open failed for {url}: {e}")
+        raise e
+    finally:
+        # Clean up: remove the file after use
+        if os.path.exists(local_path):
+            try:
+                os.remove(local_path)
+            except Exception as cleanup_e:
+                print(f"⚠️ Failed to clean up {local_path}: {cleanup_e}")
 
 def extract_rainfall_indicators(lat, lon):
     base_url = "https://storage.googleapis.com/rainfall-risk-data"
@@ -9,7 +32,6 @@ def extract_rainfall_indicators(lat, lon):
     successful_years = 0
     failed_years = []
 
-    # Snap longitude to [0, 360) if negative
     if lon < 0:
         lon += 360
 
@@ -19,13 +41,12 @@ def extract_rainfall_indicators(lat, lon):
         url = f"{base_url}/RF25_ind{year}_rfp25.nc"
         try:
             print(f"📡 Year {year} → {url}")
-            ds = xr.open_dataset(url, engine="netcdf4")
+            ds = open_remote_netcdf(url)
 
             # Confirm variable names
             if not {'LATITUDE', 'LONGITUDE', 'RAINFALL'}.issubset(ds.variables):
                 raise Exception(f"Variables in file: {list(ds.variables)} — missing one of LATITUDE/LONGITUDE/RAINFALL!")
 
-            # Find nearest lat/lon index
             lats = ds['LATITUDE'].values
             lons = ds['LONGITUDE'].values
             lat_idx = np.abs(lats - lat).argmin()
@@ -34,7 +55,6 @@ def extract_rainfall_indicators(lat, lon):
             lon_nearest = lons[lon_idx]
             print(f"   → Nearest gridpoint: lat={lat_nearest} (idx={lat_idx}), lon={lon_nearest} (idx={lon_idx})")
 
-            # Extract rainfall series
             rain = ds['RAINFALL'].isel(LATITUDE=lat_idx, LONGITUDE=lon_idx).values
 
             if rain is not None and len(rain) > 0:
@@ -49,9 +69,7 @@ def extract_rainfall_indicators(lat, lon):
                 gc.collect()
 
         except Exception as e:
-            print(f"❌ Year {year} failed: {e}", flush=True)
-            import traceback
-            traceback.print_exc()
+            print(f"⚠️ Year {year} failed/skipped: {e}", flush=True)
             failed_years.append(year)
 
     print(f"\n📊 Summary: {successful_years} years successful, {len(failed_years)} failed")

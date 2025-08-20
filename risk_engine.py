@@ -2,34 +2,41 @@
 
 def compute_risk_score(hazard_data, sector):
     """
-    Compute final risk score and category using Composite Hazard and sector weight.
+    Compute final risk score using sector-specific weights.
     """
-
+    # Sector weight mapping
     sector_weights = {
         "Chemical": 1.0,
-        "Pharma": 1.0,
-        "Automotive": 0.5,
+        "Pharma": 0.8,
+        "Automobile": 0.5,
         "Engineering": 0.5,
-        "ICT": 0.4,
-        "Logistics": 0.4,
-        "MSME": 0.3,
+        "MSME": 0.35,        # mid-point of 0.3–0.4
+        "ICT": 0.35,
+        "Logistics": 0.35,
+        "Other": 1.0         # neutral
     }
 
-    weight = sector_weights.get(sector, 0.5)  # default if not listed
+    # Pick weight, default = 1.0
+    weight = sector_weights.get(sector, 1.0)
+
+    # Composite hazard from preprocessed dataset
     composite_hazard = hazard_data["Composite_Hazard"]
 
-    final_score = round(weight * composite_hazard, 4)
+    # Final score
+    final_score = composite_hazard * weight
 
-    if final_score < 0.2:
+    # Risk categorization
+    if final_score < 0.33:
         category = "Low"
-    elif final_score < 0.5:
+    elif final_score < 0.66:
         category = "Medium"
     else:
         category = "High"
 
     return {
-        "Final_Score": final_score,
-        "Category": category,
+        "Final_Score": round(final_score, 4),
+        "Composite_Hazard": round(composite_hazard, 4),
         "Weight": weight,
-        "Composite_Hazard": composite_hazard,
+        "Category": category
     }
+

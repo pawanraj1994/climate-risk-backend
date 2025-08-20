@@ -1,0 +1,10 @@
+setuptools
+wheel
+h5pyd
+flask
+flask-cors
+xarray
+numpy
+netCDF4
+pandas
+requests
